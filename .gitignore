@@ -1,0 +1,19 @@
+# Build artifacts
+/build/
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+Makefile
+
+# Editor files
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+
+# Data files
+*.db
+
+.github/*
+.github
