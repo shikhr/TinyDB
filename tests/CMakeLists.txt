@@ -11,6 +11,8 @@ add_executable(tinydb_tests ${TEST_SRC})
 target_sources(tinydb_tests PRIVATE
     ${CMAKE_SOURCE_DIR}/src/storage/disk_manager.cpp
     ${CMAKE_SOURCE_DIR}/src/storage/page.cpp
+    ${CMAKE_SOURCE_DIR}/src/buffer/buffer_pool_manager.cpp
+    ${CMAKE_SOURCE_DIR}/src/buffer/lru_replacer.cpp
 )
 
 # Add include directories

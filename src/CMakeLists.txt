@@ -1,7 +1,11 @@
 # CMake for src directory
 
 # Collect all source files
-file(GLOB SRC_FILES "*.cpp")
+file(GLOB SRC_FILES 
+    "*.cpp"
+    "storage/*.cpp"
+    "buffer/*.cpp"
+)
 
 # Define the main executable
 add_executable(tinydb ${SRC_FILES})

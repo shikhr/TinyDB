@@ -17,3 +17,6 @@ Makefile
 
 .github/*
 .github
+
+.vscode/
+.vscode/*
