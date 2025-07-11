@@ -13,6 +13,10 @@ target_sources(tinydb_tests PRIVATE
     ${CMAKE_SOURCE_DIR}/src/storage/page.cpp
     ${CMAKE_SOURCE_DIR}/src/buffer/buffer_pool_manager.cpp
     ${CMAKE_SOURCE_DIR}/src/buffer/lru_replacer.cpp
+    ${CMAKE_SOURCE_DIR}/src/catalog/schema.cpp
+    ${CMAKE_SOURCE_DIR}/src/catalog/catalog.cpp
+    ${CMAKE_SOURCE_DIR}/src/storage/table_heap.cpp
+    ${CMAKE_SOURCE_DIR}/src/storage/table_page.cpp
 )
 
 # Add include directories

@@ -5,6 +5,7 @@ file(GLOB SRC_FILES
     "*.cpp"
     "storage/*.cpp"
     "buffer/*.cpp"
+    "catalog/*.cpp"
 )
 
 # Define the main executable
