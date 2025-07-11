@@ -3,6 +3,7 @@
 #include "common/config.h"
 #include <filesystem>
 #include <string>
+using namespace tinydb;
 
 TEST_CASE("DiskManagerTest", "[storage]")
 {

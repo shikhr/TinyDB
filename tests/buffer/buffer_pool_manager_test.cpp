@@ -4,6 +4,7 @@
 #include <filesystem>
 #include <string>
 #include <vector>
+using namespace tinydb;
 
 // Helper function to create a unique temporary file path
 std::string temp_db_path()

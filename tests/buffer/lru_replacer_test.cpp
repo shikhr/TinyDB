@@ -1,5 +1,6 @@
 #include <catch2/catch_all.hpp>
 #include "buffer/lru_replacer.h"
+using namespace tinydb;
 
 TEST_CASE("LRUReplacerTest", "[buffer]")
 {
