@@ -27,13 +27,13 @@ ctest
 ### Phase 1: Core Storage Engine
 
 - [x] **Project Setup**: Configure CMake, Git, and Google Test.
-- [ ] **Disk Manager**: Handles low-level, page-based file I/O.
-- [ ] **Page & Buffer Pool Manager**: Manages caching of disk pages in memory.
+- [x] **Disk Manager**: Handles low-level, page-based file I/O.
+- [x] **Page & Buffer Pool Manager**: Manages caching of disk pages in memory.
 
 ### Phase 2: Data & Execution Layer
 
-- [ ] **System Catalog**: Manages metadata about tables and schemas.
-- [ ] **Table Heap & Record Manager**: Implements storage for unordered rows on pages.
+- [x] **System Catalog**: Manages metadata about tables and schemas.
+- [x] **Table Heap & Record Manager**: Implements storage for unordered rows on pages.
 - [ ] **SQL Parser**: Translates SQL strings into an Abstract Syntax Tree (AST).
 - [ ] **Execution Engine**: Executes queries using a sequential scan plan.
 
