@@ -3,6 +3,7 @@
 #include "storage/table_page.h"
 #include "storage/disk_manager.h"
 #include "buffer/buffer_pool_manager.h"
+#include "storage/free_space_manager.h"
 #include "catalog/schema.h"
 #include <filesystem>
 #include <vector>
@@ -26,9 +27,17 @@ TEST_CASE("TableHeap Stress Tests", "[table_heap]")
   auto disk_manager = std::make_unique<DiskManager>(db_file);
   auto buffer_pool_manager = std::make_unique<BufferPoolManager>(10, disk_manager.get());
 
-  // Create the first page for the table
-  page_id_t first_page_id;
-  Page *first_page = buffer_pool_manager->new_page(&first_page_id);
+  // Create FreeSpaceManager and initialize it
+  auto free_space_manager = std::make_unique<FreeSpaceManager>(buffer_pool_manager.get());
+  REQUIRE(free_space_manager->initialize());
+
+  // Use two-step allocation for the first table page
+  // Step 1: Get page ID from FreeSpaceManager
+  page_id_t first_page_id = free_space_manager->allocate_page();
+  REQUIRE(first_page_id != INVALID_PAGE_ID);
+
+  // Step 2: Get page frame from BufferPoolManager (use new_page for newly allocated pages)
+  Page *first_page = buffer_pool_manager->new_page(first_page_id);
   REQUIRE(first_page != nullptr);
 
   // Initialize the first page as a table page
@@ -36,8 +45,8 @@ TEST_CASE("TableHeap Stress Tests", "[table_heap]")
   table_page->init(first_page_id, INVALID_PAGE_ID);
   buffer_pool_manager->unpin_page(first_page_id, true);
 
-  // Create table heap
-  TableHeap table_heap(buffer_pool_manager.get(), first_page_id);
+  // Create table heap with FreeSpaceManager
+  TableHeap table_heap(buffer_pool_manager.get(), first_page_id, free_space_manager.get());
 
   SECTION("Multi-Page Insert Stress Test")
   {
