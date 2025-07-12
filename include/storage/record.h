@@ -32,6 +32,7 @@ namespace tinydb
   class Record
   {
   public:
+    Record() : m_rid_(RecordID()), m_size_(0), m_data_(nullptr) {}
     Record(RecordID rid, int size, char *data) : m_rid_(rid), m_size_(size), m_data_(data) {}
 
     RecordID get_rid() const { return m_rid_; }

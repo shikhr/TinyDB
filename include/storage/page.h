@@ -7,6 +7,11 @@
 namespace tinydb
 {
 
+  /**
+   * Page is the base class for all pages in the database.
+   * It provides a fixed-size buffer for storing page data and metadata.
+   * Each page has a unique page_id, pin count, and dirty flag.
+   */
   class Page
   {
   public:

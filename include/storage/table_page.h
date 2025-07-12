@@ -56,6 +56,7 @@ namespace tinydb
     // Page header accessors
     page_id_t get_next_page_id() const;
     void set_next_page_id(page_id_t next_page_id);
+    slot_num_t get_num_records() const;
 
   private:
     // The offset of the page header fields.
@@ -66,7 +67,6 @@ namespace tinydb
     static constexpr size_t kSlotArrayOffset = kPageHeaderSize;
 
     // Page header accessors
-    slot_num_t get_num_records() const;
     void set_num_records(slot_num_t num_records);
 
     offset_t get_free_space_pointer() const;

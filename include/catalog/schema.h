@@ -56,6 +56,10 @@ namespace tinydb
     std::string m_string_val_;
   };
 
+  /**
+   * A Column represents a single column in a table schema.
+   * It has a name, type, maximum length (for VARCHAR), and nullability.
+   */
   class Column
   {
   public:
@@ -80,6 +84,11 @@ namespace tinydb
     bool m_nullable_{true};  // Whether this column can be NULL
   };
 
+  /**
+   * The Schema class represents a table schema.
+   * It contains a list of columns and provides methods to access them.
+   * It also supports serialization and deserialization of records.
+   */
   class Schema
   {
   public:

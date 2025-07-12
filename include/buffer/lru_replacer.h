@@ -9,6 +9,11 @@
 namespace tinydb
 {
 
+  /**
+   * LRUReplacer implements a Least Recently Used (LRU) page replacement policy.
+   * It maintains a list of pages in the order they were accessed, allowing
+   * efficient eviction of the least recently used page when necessary.
+   */
   class LRUReplacer
   {
   public:
