@@ -10,6 +10,20 @@
 namespace tinydb
 {
 
+  // Forward declaration to break circular dependency
+  class FreeSpaceManager;
+
+  /**
+   * The BufferPoolManager is responsible for managing the buffer pool,
+   * which is a collection of pages in memory that can be used to cache
+   * frequently accessed data from disk. It handles page fetching, pinning,
+   * unpinning, and flushing pages to disk.
+   * It also interacts with the DiskManager for low-level I/O operations.
+   *
+   * The BufferPoolManager uses a Least Recently Used (LRU) replacement policy
+   * to manage the eviction of pages from the buffer pool.
+   */
+
   class BufferPoolManager
   {
   public:
@@ -17,11 +31,14 @@ namespace tinydb
     ~BufferPoolManager();
 
     Page *fetch_page(page_id_t page_id);
+    Page *new_page(page_id_t page_id);
     bool unpin_page(page_id_t page_id, bool is_dirty);
     bool flush_page(page_id_t page_id);
     void flush_all_pages();
-    Page *new_page(page_id_t *page_id);
     bool delete_page(page_id_t page_id);
+
+    // Access to disk manager for coordination
+    DiskManager *get_disk_manager() { return m_disk_manager_; }
 
   private:
     size_t m_pool_size_;                                     // Total number of frames in the buffer pool

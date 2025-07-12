@@ -62,10 +62,11 @@ namespace tinydb
       m_page_table_.erase(frame_page->get_page_id());
     }
 
-    // Read the page from disk.
+    // Read the page from disk. It's expected to exist.
     if (!m_disk_manager_->read_page(page_id, frame_page->get_data()))
     {
-      // Page does not exist on disk, return the frame to the free list and fail.
+      // The page could not be read. This is a real I/O error.
+      // Release the frame we reserved and fail.
       m_free_list_.push_back(frame_id);
       return nullptr;
     }
@@ -138,54 +139,13 @@ namespace tinydb
     }
   }
 
-  Page *BufferPoolManager::new_page(page_id_t *page_id)
-  {
-    std::lock_guard<std::mutex> lock(m_latch_);
-
-    frame_id_t frame_id;
-    if (!find_free_frame(&frame_id))
-    {
-      return nullptr; // No free frame available
-    }
-
-    Page *frame_page = &m_pages_[frame_id];
-    if (frame_page->get_page_id() != -1)
-    { // If the frame was occupied
-      if (frame_page->is_dirty())
-      {
-        m_disk_manager_->write_page(frame_page->get_page_id(), frame_page->get_data());
-      }
-      m_page_table_.erase(frame_page->get_page_id());
-    }
-
-    // Allocate a new page on disk.
-    page_id_t new_page_id = m_disk_manager_->allocate_page();
-    if (new_page_id == -1)
-    {
-      // Disk is full, return the frame to the free list and fail.
-      m_free_list_.push_back(frame_id);
-      return nullptr;
-    }
-
-    // Update page metadata and page table.
-    frame_page->set_page_id(new_page_id);
-    frame_page->set_pin_count(1);
-    frame_page->set_dirty(false);
-    m_page_table_[new_page_id] = frame_id;
-    m_replacer_->pin(frame_id);
-
-    *page_id = new_page_id;
-    return frame_page;
-  }
-
   bool BufferPoolManager::delete_page(page_id_t page_id)
   {
     std::lock_guard<std::mutex> lock(m_latch_);
 
     if (!m_page_table_.count(page_id))
     {
-      // Page is not in buffer pool, just deallocate on disk
-      m_disk_manager_->deallocate_page(page_id);
+      // Page is not in buffer pool - nothing to do in BufferPoolManager
       return true;
     }
 
@@ -207,10 +167,38 @@ namespace tinydb
     frame_page->set_pin_count(0);
     frame_page->set_dirty(false);
 
-    // Deallocate the page on disk
-    m_disk_manager_->deallocate_page(page_id);
-
     return true;
+  }
+
+  Page *BufferPoolManager::new_page(page_id_t page_id)
+  {
+    std::lock_guard<std::mutex> lock(m_latch_);
+
+    frame_id_t frame_id;
+    if (!find_free_frame(&frame_id))
+    {
+      return nullptr;
+    }
+
+    Page *frame_page = &m_pages_[frame_id];
+    if (frame_page->get_page_id() != -1)
+    {
+      if (frame_page->is_dirty())
+      {
+        m_disk_manager_->write_page(frame_page->get_page_id(), frame_page->get_data());
+      }
+      m_page_table_.erase(frame_page->get_page_id());
+    }
+
+    frame_page->set_page_id(page_id);
+    frame_page->set_pin_count(1);
+    frame_page->set_dirty(true);
+    std::memset(frame_page->get_data(), 0, kPageSize);
+
+    m_page_table_[page_id] = frame_id;
+    m_replacer_->pin(frame_id);
+
+    return frame_page;
   }
 
 } // namespace tinydb

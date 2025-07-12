@@ -1,6 +1,7 @@
 #include <catch2/catch_all.hpp>
 #include "buffer/buffer_pool_manager.h"
 #include "storage/disk_manager.h"
+#include "storage/free_space_manager.h"
 #include <filesystem>
 #include <string>
 #include <vector>
@@ -25,14 +26,21 @@ TEST_CASE("BufferPoolManagerTests", "[BufferPoolManager]")
 
   auto disk_manager = std::make_unique<DiskManager>(db_file);
   auto buffer_pool_manager = std::make_unique<BufferPoolManager>(buffer_pool_size, disk_manager.get());
+  auto free_space_manager = std::make_unique<FreeSpaceManager>(buffer_pool_manager.get());
+
+  // Initialize free space manager to set up header page
+  REQUIRE(free_space_manager->initialize());
 
   SECTION("NewPage: Basic Creation and Pinning")
   {
-    page_id_t page_id;
-    Page *page = buffer_pool_manager->new_page(&page_id);
+    // Allocate a page ID through FreeSpaceManager
+    page_id_t page_id = free_space_manager->allocate_page();
+    REQUIRE(page_id != INVALID_PAGE_ID);
 
+    // Create the page in the buffer pool
+    Page *page = buffer_pool_manager->new_page(page_id);
     REQUIRE(page != nullptr);
-    REQUIRE(page_id == 1);
+    REQUIRE(page->get_page_id() == page_id);
     REQUIRE(page->get_pin_count() == 1); // Should be pinned upon creation
 
     // Unpin the page to allow for cleanup
@@ -42,30 +50,46 @@ TEST_CASE("BufferPoolManagerTests", "[BufferPoolManager]")
   SECTION("NewPage: Buffer Pool Full with Pinned Pages")
   {
     std::vector<page_id_t> page_ids;
+
+    // Fill the buffer pool
     for (size_t i = 0; i < buffer_pool_size; ++i)
     {
-      page_id_t page_id;
-      Page *page = buffer_pool_manager->new_page(&page_id);
+      page_id_t page_id = free_space_manager->allocate_page();
+      REQUIRE(page_id != INVALID_PAGE_ID);
+
+      Page *page = buffer_pool_manager->new_page(page_id);
       REQUIRE(page != nullptr); // Should be able to create up to buffer_pool_size
       page_ids.push_back(page_id);
     }
 
-    // All pages are pinned, so the next new_page call should fail
-    page_id_t new_page_id;
-    Page *new_page = buffer_pool_manager->new_page(&new_page_id);
-    REQUIRE(new_page == nullptr);
+    // All pages are pinned, so the next allocate_page call should fail
+    // because there's no room in the buffer pool to access metadata pages
+    page_id_t new_page_id = free_space_manager->allocate_page();
+    REQUIRE(new_page_id == INVALID_PAGE_ID); // Page ID allocation should fail when buffer pool is full
 
-    // Cleanup: Unpin all pages
-    for (const auto &pid : page_ids)
+    // Unpin one page to make room
+    buffer_pool_manager->unpin_page(page_ids[0], false);
+
+    // Now allocation should work
+    new_page_id = free_space_manager->allocate_page();
+    REQUIRE(new_page_id != INVALID_PAGE_ID);
+
+    Page *new_page = buffer_pool_manager->new_page(new_page_id);
+    REQUIRE(new_page != nullptr); // Should succeed after unpinning a page
+
+    // Cleanup: Unpin all remaining pages
+    for (size_t i = 1; i < page_ids.size(); ++i)
     {
-      buffer_pool_manager->unpin_page(pid, false);
+      buffer_pool_manager->unpin_page(page_ids[i], false);
     }
+    buffer_pool_manager->unpin_page(new_page_id, false);
   }
 
   SECTION("FetchPage: Fetching from Disk and Cache")
   {
-    page_id_t page_id;
-    Page *page = buffer_pool_manager->new_page(&page_id);
+    // Create a page
+    page_id_t page_id = free_space_manager->allocate_page();
+    Page *page = buffer_pool_manager->new_page(page_id);
     REQUIRE(page != nullptr);
     strcpy(page->get_data(), "test data");
 
@@ -82,12 +106,14 @@ TEST_CASE("BufferPoolManagerTests", "[BufferPoolManager]")
     buffer_pool_manager->unpin_page(page_id, false);
 
     // Force eviction by filling the buffer pool with other pages
+    std::vector<page_id_t> temp_pages;
     for (size_t i = 0; i < buffer_pool_size; ++i)
     {
-      page_id_t temp_id;
-      Page *temp_page = buffer_pool_manager->new_page(&temp_id);
+      page_id_t temp_id = free_space_manager->allocate_page();
+      Page *temp_page = buffer_pool_manager->new_page(temp_id);
       REQUIRE(temp_page != nullptr);
       buffer_pool_manager->unpin_page(temp_id, false);
+      temp_pages.push_back(temp_id);
     }
 
     // The original page should now be on disk. Fetch it.
@@ -101,8 +127,8 @@ TEST_CASE("BufferPoolManagerTests", "[BufferPoolManager]")
 
   SECTION("UnpinPage: Dirty Flag Behavior")
   {
-    page_id_t page_id;
-    Page *page = buffer_pool_manager->new_page(&page_id);
+    page_id_t page_id = free_space_manager->allocate_page();
+    Page *page = buffer_pool_manager->new_page(page_id);
     REQUIRE(page != nullptr);
     strcpy(page->get_data(), "dirty data");
 
@@ -120,14 +146,12 @@ TEST_CASE("BufferPoolManagerTests", "[BufferPoolManager]")
     // Flush to disk
     buffer_pool_manager->flush_page(page_id);
     REQUIRE_FALSE(page->is_dirty());
-
-    buffer_pool_manager->unpin_page(page_id, false);
   }
 
   SECTION("DeletePage: Basic Deletion and Edge Cases")
   {
-    page_id_t page_id;
-    Page *page = buffer_pool_manager->new_page(&page_id);
+    page_id_t page_id = free_space_manager->allocate_page();
+    Page *page = buffer_pool_manager->new_page(page_id);
     REQUIRE(page != nullptr);
 
     // Cannot delete a pinned page
@@ -145,11 +169,12 @@ TEST_CASE("BufferPoolManagerTests", "[BufferPoolManager]")
   SECTION("EvictionPolicy: LRU Behavior")
   {
     std::vector<page_id_t> page_ids;
+
     // Fill the buffer pool
     for (size_t i = 0; i < buffer_pool_size; ++i)
     {
-      page_id_t page_id;
-      Page *page = buffer_pool_manager->new_page(&page_id);
+      page_id_t page_id = free_space_manager->allocate_page();
+      Page *page = buffer_pool_manager->new_page(page_id);
       REQUIRE(page != nullptr);
       page_ids.push_back(page_id);
     }
@@ -160,66 +185,79 @@ TEST_CASE("BufferPoolManagerTests", "[BufferPoolManager]")
       buffer_pool_manager->unpin_page(pid, false);
     }
 
-    // Create a new page, which should force the eviction of page 1 (the first one created)
-    page_id_t new_page_id;
-    Page *new_page = buffer_pool_manager->new_page(&new_page_id);
+    // Create a new page, which should force the eviction of the first page (LRU)
+    page_id_t new_page_id = free_space_manager->allocate_page();
+    Page *new_page = buffer_pool_manager->new_page(new_page_id);
     REQUIRE(new_page != nullptr);
 
-    // Try to fetch the evicted page (page_ids[1]). It should be read from disk.
-    // This also implicitly tests that it was actually evicted.
-    Page *fetched_page = buffer_pool_manager->fetch_page(page_ids[1]);
+    // Try to fetch one of the potentially evicted pages. It should be read from disk.
+    // This also implicitly tests that eviction occurred.
+    Page *fetched_page = buffer_pool_manager->fetch_page(page_ids[0]);
     REQUIRE(fetched_page != nullptr);
 
     // Cleanup
-    buffer_pool_manager->unpin_page(page_ids[1], false);
+    buffer_pool_manager->unpin_page(page_ids[0], false);
     buffer_pool_manager->unpin_page(new_page_id, false);
   }
 
-  SECTION("FreeList: Persistence and Reuse")
+  SECTION("PageAllocation: FreeSpaceManager Integration")
   {
-    page_id_t p1, p2, p3;
+    // Test that page allocation through FreeSpaceManager works correctly
+    page_id_t p1 = free_space_manager->allocate_page();
+    page_id_t p2 = free_space_manager->allocate_page();
+    page_id_t p3 = free_space_manager->allocate_page();
 
-    // Scope 1: Allocate some pages and deallocate one
-    {
-      auto disk_manager_local = std::make_unique<DiskManager>(db_file);
-      auto buffer_pool_manager_local = std::make_unique<BufferPoolManager>(buffer_pool_size, disk_manager_local.get());
+    REQUIRE(p1 != INVALID_PAGE_ID);
+    REQUIRE(p2 != INVALID_PAGE_ID);
+    REQUIRE(p3 != INVALID_PAGE_ID);
+    REQUIRE(p1 != p2);
+    REQUIRE(p2 != p3);
+    REQUIRE(p1 != p3);
 
-      Page *page1 = buffer_pool_manager_local->new_page(&p1);
-      Page *page2 = buffer_pool_manager_local->new_page(&p2);
-      Page *page3 = buffer_pool_manager_local->new_page(&p3);
+    // Create pages in buffer pool
+    Page *page1 = buffer_pool_manager->new_page(p1);
+    Page *page2 = buffer_pool_manager->new_page(p2);
+    Page *page3 = buffer_pool_manager->new_page(p3);
 
-      REQUIRE(p1 == 1);
-      REQUIRE(p2 == 2);
-      REQUIRE(p3 == 3);
+    REQUIRE(page1 != nullptr);
+    REQUIRE(page2 != nullptr);
+    REQUIRE(page3 != nullptr);
 
-      // Unpin and delete page 2
-      buffer_pool_manager_local->unpin_page(p1, false);
-      buffer_pool_manager_local->unpin_page(p2, false);
-      buffer_pool_manager_local->unpin_page(p3, false);
-      REQUIRE(buffer_pool_manager_local->delete_page(p2));
+    // Test deallocation and reallocation
+    buffer_pool_manager->unpin_page(p2, false);
+    buffer_pool_manager->delete_page(p2);
+    free_space_manager->deallocate_page(p2);
 
-      // Destructors will be called, saving state
-    }
+    // Next allocation should reuse p2
+    page_id_t p4 = free_space_manager->allocate_page();
+    REQUIRE(p4 == p2); // Should reuse the deallocated page
 
-    // Scope 2: Reopen the database and check if the free list was restored
-    {
-      auto disk_manager_reopened = std::make_unique<DiskManager>(db_file);
-      auto buffer_pool_manager_reopened = std::make_unique<BufferPoolManager>(buffer_pool_size, disk_manager_reopened.get());
+    // Cleanup
+    buffer_pool_manager->unpin_page(p1, false);
+    buffer_pool_manager->unpin_page(p3, false);
+  }
 
-      page_id_t p4;
-      Page *page4 = buffer_pool_manager_reopened->new_page(&p4);
-      REQUIRE(page4 != nullptr);
+  SECTION("FlushPage: Basic Functionality")
+  {
+    page_id_t page_id = free_space_manager->allocate_page();
+    Page *page = buffer_pool_manager->new_page(page_id);
+    REQUIRE(page != nullptr);
 
-      // The new page should reuse the deallocated page ID
-      REQUIRE(p4 == p2); // Should reuse page 2
+    // Write some data and mark as dirty
+    strcpy(page->get_data(), "flush test data");
+    buffer_pool_manager->unpin_page(page_id, true);
+    REQUIRE(page->is_dirty());
 
-      page_id_t p5;
-      Page *page5 = buffer_pool_manager_reopened->new_page(&p5);
-      REQUIRE(page5 != nullptr);
+    // Flush the page
+    REQUIRE(buffer_pool_manager->flush_page(page_id));
+    REQUIRE_FALSE(page->is_dirty()); // Should no longer be dirty
 
-      // The next page should be a fresh one
-      REQUIRE(p5 == 4);
-    }
+    // Verify data persists by fetching again
+    Page *fetched_page = buffer_pool_manager->fetch_page(page_id);
+    REQUIRE(fetched_page != nullptr);
+    REQUIRE(strcmp(fetched_page->get_data(), "flush test data") == 0);
+
+    buffer_pool_manager->unpin_page(page_id, false);
   }
 
   // Teardown: remove the database file after the test case

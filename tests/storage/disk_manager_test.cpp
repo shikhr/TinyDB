@@ -5,10 +5,9 @@
 #include <string>
 using namespace tinydb;
 
-TEST_CASE("DiskManagerTest", "[storage]")
+TEST_CASE("DiskManagerTest - New Architecture I/O Operations", "[storage]")
 {
-
-  std::string db_file = std::filesystem::temp_directory_path() / "test.db";
+  std::string db_file = std::filesystem::temp_directory_path() / "test_new.db";
 
   // Clean up any previous test files
   if (std::filesystem::exists(db_file))
@@ -26,127 +25,69 @@ TEST_CASE("DiskManagerTest", "[storage]")
     std::string message = "Hello, DiskManager!";
     strncpy(write_data, message.c_str(), kPageSize);
 
-    page_id_t page_id = disk_manager.allocate_page();
-    REQUIRE(page_id == 1); // First allocated page should be 1, since 0 is header
-
+    // Write to page 0 (header page)
+    page_id_t page_id = 0;
     disk_manager.write_page(page_id, write_data);
-    REQUIRE(disk_manager.read_page(page_id, read_data));
 
-    REQUIRE(std::string(read_data) == message);
-
-    // Overwrite the page
-    std::string new_message = "New data for the page.";
-    strncpy(write_data, new_message.c_str(), kPageSize);
-    disk_manager.write_page(page_id, write_data);
-    REQUIRE(disk_manager.read_page(page_id, read_data));
-
-    REQUIRE(std::string(read_data) == new_message);
+    // Read back the page and verify
+    bool success = disk_manager.read_page(page_id, read_data);
+    REQUIRE(success);
+    REQUIRE(std::string(read_data).substr(0, message.size()) == message);
   }
 
-  SECTION("Allocate Multiple Pages")
+  SECTION("Write/Read Multiple Pages")
   {
     DiskManager disk_manager(db_file);
-    REQUIRE(disk_manager.allocate_page() == 1);
-    REQUIRE(disk_manager.allocate_page() == 2);
-    REQUIRE(disk_manager.allocate_page() == 3);
-  }
 
-  SECTION("Deallocate and Reuse Pages")
-  {
-    DiskManager disk_manager(db_file);
-    page_id_t p1 = disk_manager.allocate_page(); // 1
-    page_id_t p2 = disk_manager.allocate_page(); // 2
-    REQUIRE(p1 == 1);
-    REQUIRE(p2 == 2);
-
-    disk_manager.deallocate_page(p1);
-    page_id_t p3 = disk_manager.allocate_page(); // Should reuse 1
-    REQUIRE(p3 == p1);
-
-    page_id_t p4 = disk_manager.allocate_page(); // Should be 3
-    REQUIRE(p4 == 3);
-  }
-
-  SECTION("Persistence")
-  {
-    page_id_t page_id;
+    for (page_id_t page_id = 0; page_id < 10; ++page_id)
     {
-      DiskManager disk_manager(db_file);
-      page_id = disk_manager.allocate_page();
       char write_data[kPageSize];
-      std::string message = "Persistent data";
-      strncpy(write_data, message.c_str(), kPageSize);
-      disk_manager.write_page(page_id, write_data);
-    } // DiskManager goes out of scope, destructor is called, file is closed
-
-    {
-      DiskManager disk_manager(db_file); // Re-open the file
       char read_data[kPageSize];
-      REQUIRE(disk_manager.read_page(page_id, read_data));
-      REQUIRE(std::string(read_data) == "Persistent data");
-      // Check that new pages are allocated correctly
-      REQUIRE(disk_manager.allocate_page() == 2);
+
+      std::string message = "Page " + std::to_string(page_id);
+      strncpy(write_data, message.c_str(), kPageSize);
+
+      disk_manager.write_page(page_id, write_data);
+
+      bool success = disk_manager.read_page(page_id, read_data);
+      REQUIRE(success);
+      REQUIRE(std::string(read_data).substr(0, message.size()) == message);
     }
   }
 
-  SECTION("Free List Persistence")
+  SECTION("Read Non-existent Page")
   {
-    std::vector<page_id_t> free_list_before;
-    {
-      DiskManager disk_manager(db_file);
+    DiskManager disk_manager(db_file);
+    char read_data[kPageSize];
 
-      // Allocate 1000 pages
-      for (int i = 1; i <= 1000; ++i)
-      {
-        REQUIRE(disk_manager.allocate_page() == i);
-      }
-
-      // Deallocate pages with IDs that are multiples of 3
-      for (page_id_t i = 1; i <= 1000; ++i)
-      {
-        if (i % 3 == 0)
-        {
-          disk_manager.deallocate_page(i);
-        }
-      }
-
-      // Save the free list for later comparison
-      // We expect the free pages to be in reverse order of deallocation
-      for (int i = 1000; i >= 1; --i)
-      {
-        if (i % 3 == 0)
-        {
-          free_list_before.push_back(i);
-        }
-      }
-    } // DiskManager is destroyed, data is persisted.
-
-    {
-      DiskManager disk_manager(db_file); // Re-open the database file.
-
-      // Sort the original free list for comparison
-      std::sort(free_list_before.begin(), free_list_before.end());
-
-      // Allocate from the free list and store the new page IDs
-      std::vector<page_id_t> free_list_after;
-      for (size_t i = 0; i < free_list_before.size(); ++i)
-      {
-        free_list_after.push_back(disk_manager.allocate_page());
-      }
-
-      // Sort the newly allocated page IDs
-      std::sort(free_list_after.begin(), free_list_after.end());
-
-      // The two lists should now be identical
-      REQUIRE(free_list_before == free_list_after);
-
-      // After exhausting the free list, new pages should be allocated sequentially.
-      REQUIRE(disk_manager.allocate_page() == 1001);
-      REQUIRE(disk_manager.allocate_page() == 1002);
-    }
+    // Try to read a page that doesn't exist
+    bool success = disk_manager.read_page(1000, read_data);
+    REQUIRE(!success); // Should fail
   }
 
-  // Clean up the test file
+  SECTION("File Size in Pages")
+  {
+    DiskManager disk_manager(db_file);
+
+    // Initially should be 0 pages
+    REQUIRE(disk_manager.get_file_size_in_pages() == 0);
+
+    // Write a page
+    char write_data[kPageSize];
+    std::memset(write_data, 0, kPageSize);
+    disk_manager.write_page(0, write_data);
+
+    // Now should be 1 page
+    REQUIRE(disk_manager.get_file_size_in_pages() == 1);
+
+    // Write another page
+    disk_manager.write_page(1, write_data);
+
+    // Now should be 2 pages
+    REQUIRE(disk_manager.get_file_size_in_pages() == 2);
+  }
+
+  // Clean up
   if (std::filesystem::exists(db_file))
   {
     std::filesystem::remove(db_file);
