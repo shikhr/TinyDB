@@ -18,6 +18,8 @@ target_sources(tinydb_tests PRIVATE
     ${CMAKE_SOURCE_DIR}/src/catalog/catalog.cpp
     ${CMAKE_SOURCE_DIR}/src/storage/table_heap.cpp
     ${CMAKE_SOURCE_DIR}/src/storage/table_page.cpp
+    ${CMAKE_SOURCE_DIR}/src/parser/lexer.cpp
+    ${CMAKE_SOURCE_DIR}/src/parser/parser.cpp
 )
 
 # Add include directories

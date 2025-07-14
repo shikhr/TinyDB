@@ -6,8 +6,9 @@ file(GLOB SRC_FILES
     "storage/*.cpp"
     "buffer/*.cpp"
     "catalog/*.cpp"
+    "parser/*.cpp"
 )
-
+    
 # Define the main executable
 add_executable(tinydb ${SRC_FILES})
 
