@@ -6,7 +6,7 @@ namespace tinydb
 {
 
   static constexpr int kPageSize = 4096;
-  static constexpr int kBufferPoolSize = 10;
+  static constexpr int kBufferPoolSize = 16384;
 
   using page_id_t = int32_t;
   using frame_id_t = int32_t;
