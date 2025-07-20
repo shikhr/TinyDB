@@ -20,3 +20,6 @@ Makefile
 
 .vscode/
 .vscode/*
+
+debug_*
+demo_*

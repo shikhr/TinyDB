@@ -35,7 +35,7 @@ ctest
 - [x] **System Catalog**: Manages metadata about tables and schemas.
 - [x] **Table Heap & Record Manager**: Implements storage for unordered rows on pages.
 - [x] **SQL Parser**: Translates SQL strings into an Abstract Syntax Tree (AST).
-- [ ] **Execution Engine**: Executes queries using a sequential scan plan.
+- [x] **Execution Engine**: Executes queries using a sequential scan plan.
 
 ### Phase 3: Indexing & Advanced Queries
 
