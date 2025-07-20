@@ -34,11 +34,11 @@ public:
     const char *home = std::getenv("HOME");
 
     if (xdg)
-      return std::string(xdg) + "/mydb/history";
+      return std::string(xdg) + "/.tinydb_history";
     else if (home)
-      return std::string(home) + "/.config/mydb/history";
+      return std::string(home) + "/.tinydb_history";
     else
-      return ".mydb_history"; // fallback in current directory
+      return ".tinydb_history"; // fallback in current directory
   }
 
   void load_history()
