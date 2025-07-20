@@ -181,6 +181,11 @@ namespace tinydb
       {
         return parse_delete();
       }
+      else if (keyword == "UPDATE")
+      {
+        set_error("UPDATE statement is not yet implemented");
+        return nullptr;
+      }
       else
       {
         set_error("Unsupported SQL statement: " + keyword);

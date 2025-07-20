@@ -21,7 +21,7 @@ namespace tinydb
       {
         tokens.push_back(readWord());
       }
-      else if (current == '"')
+      else if (current == '"' || current == '\'')
       {
         tokens.push_back(readStringLiteral());
       }
@@ -95,13 +95,16 @@ namespace tinydb
 
   Token Lexer::readStringLiteral()
   {
-    consume(); // Consume opening quote
+    char quote_char = consume(); // Consume opening quote (either ' or ")
     std::string value;
-    while (peek() != '"' && !isEnd())
+    while (peek() != quote_char && !isEnd())
     {
       value += consume();
     }
-    consume(); // Consume closing quote
+    if (peek() == quote_char)
+    {
+      consume(); // Consume closing quote
+    }
     return {TokenType::STRING_LITERAL, value, m_line_, m_column_};
   }
 

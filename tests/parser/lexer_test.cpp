@@ -401,11 +401,18 @@ namespace tinydb
 
     SECTION("Unterminated string - graceful handling")
     {
-      // Note: Current implementation throws an exception for unterminated strings
-      // This test documents the current behavior
+      // The lexer handles unterminated strings gracefully by returning the content
+      // without the closing quote, rather than throwing an exception
       Lexer lexer("SELECT \"unterminated");
+      auto tokens = lexer.tokenize();
 
-      REQUIRE_THROWS_WITH(lexer.tokenize(), "Attempted to consume from an empty input.");
+      REQUIRE_FALSE(lexer.had_error());
+      REQUIRE(tokens.size() == 3); // SELECT, "unterminated", EOF
+      REQUIRE(tokens[0].type == TokenType::KEYWORD);
+      REQUIRE(tokens[0].value == "SELECT");
+      REQUIRE(tokens[1].type == TokenType::STRING_LITERAL);
+      REQUIRE(tokens[1].value == "unterminated");
+      REQUIRE(tokens[2].type == TokenType::END_OF_FILE);
     }
   }
 
