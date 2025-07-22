@@ -192,12 +192,28 @@ namespace tinydb
     // Determine which columns to select
     std::vector<size_t> selected_columns;
 
-    // For now, assume SELECT * (all columns)
-    // TODO: Handle specific column selection
-    for (size_t i = 0; i < schema->get_column_count(); ++i)
+    for (const auto &col_name : stmt.select_list)
     {
-      selected_columns.push_back(i);
-      result.column_names.push_back(schema->get_column(i).get_name());
+      const IdentifierExpression *id_expr = dynamic_cast<const IdentifierExpression *>(col_name.get());
+      if (id_expr->name == "*")
+      {
+        // If SELECT *, we already added all columns
+        for (size_t i = 0; i < schema->get_column_count(); ++i)
+        {
+          selected_columns.push_back(i);
+          result.column_names.push_back(schema->get_column(i).get_name());
+        }
+        continue;
+      }
+      if (id_expr)
+      {
+        auto col_index = schema->get_column_index(id_expr->name);
+        if (col_index)
+        {
+          selected_columns.push_back(*col_index);
+          result.column_names.push_back(schema->get_column(*col_index).get_name());
+        }
+      }
     }
 
     // Sequential scan through all records
