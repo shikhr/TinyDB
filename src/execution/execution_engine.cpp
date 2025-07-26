@@ -213,6 +213,10 @@ namespace tinydb
           selected_columns.push_back(*col_index);
           result.column_names.push_back(schema->get_column(*col_index).get_name());
         }
+        else
+        {
+          return make_error_result("Column " + id_expr->name + " not found in table: " + stmt.from_table);
+        }
       }
     }
 
