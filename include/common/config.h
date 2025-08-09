@@ -18,4 +18,9 @@ namespace tinydb
 
   static constexpr page_id_t INVALID_PAGE_ID = -1;
 
+  // Well-known system page IDs
+  static constexpr page_id_t kHeaderPageId = 0;
+  static constexpr page_id_t kFreeSpaceMapPageId = 1;
+  static constexpr page_id_t kFirstDataPageId = 2;
+
 } // namespace tinydb

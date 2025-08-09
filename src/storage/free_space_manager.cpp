@@ -10,12 +10,12 @@ namespace tinydb
 
   bool FreeSpaceManager::initialize()
   {
-    // First, ensure Page 0 (header page) exists and is initialized
-    Page *header_page = m_buffer_pool_manager_->fetch_page(0);
+    // First, ensure Header page exists and is initialized
+    Page *header_page = m_buffer_pool_manager_->fetch_page(kHeaderPageId);
     if (header_page == nullptr)
     {
       // Header page doesn't exist - create and initialize it
-      header_page = m_buffer_pool_manager_->new_page(0);
+      header_page = m_buffer_pool_manager_->new_page(kHeaderPageId);
       if (header_page == nullptr)
       {
         return false;
@@ -23,20 +23,19 @@ namespace tinydb
 
       DBHeaderPage *header = reinterpret_cast<DBHeaderPage *>(header_page->get_data());
       header->init();
-      m_buffer_pool_manager_->unpin_page(0, true); // Mark as dirty
+      m_buffer_pool_manager_->unpin_page(kHeaderPageId, true); // Mark as dirty
     }
     else
     {
-      m_buffer_pool_manager_->unpin_page(0, false);
+      m_buffer_pool_manager_->unpin_page(kHeaderPageId, false);
     }
 
-    // Then, handle the free space map page (Page 1)
+    // Then, handle the free space map page (FSM)
     Page *fs_page = m_buffer_pool_manager_->fetch_page(kFreeSpaceMapPageId);
 
     if (fs_page == nullptr)
     {
-      // Page 1 doesn't exist yet - this is a new database
-      // Use new_page to create it
+      // FSM page doesn't exist yet - this is a new database
       fs_page = m_buffer_pool_manager_->new_page(kFreeSpaceMapPageId);
       if (fs_page == nullptr)
       {
@@ -45,14 +44,14 @@ namespace tinydb
 
       // Initialize the bitmap for a new database
       uint8_t *bitmap = reinterpret_cast<uint8_t *>(fs_page->get_data());
-      // Mark Page 0 (header) and Page 1 (free space map) as allocated
-      bitmap[0] |= 0x03; // Set bits 0 and 1 (pages 0 and 1)
+      // Mark Header and FSM pages as allocated
+      bitmap[0] |= 0x03; // Set bits 0 and 1
 
       m_buffer_pool_manager_->unpin_page(kFreeSpaceMapPageId, true); // Mark as dirty
     }
     else
     {
-      // Page 1 exists - this is an existing database, just unpin it
+      // FSM exists - this is an existing database, just unpin it
       m_buffer_pool_manager_->unpin_page(kFreeSpaceMapPageId, false);
     }
 
@@ -74,7 +73,7 @@ namespace tinydb
 
     // No free pages available for reuse, need to allocate a new page
     // Get current page count (high watermark) from the header page
-    Page *header_page = m_buffer_pool_manager_->fetch_page(0);
+    Page *header_page = m_buffer_pool_manager_->fetch_page(kHeaderPageId);
     if (header_page == nullptr)
     {
       return INVALID_PAGE_ID;
@@ -82,8 +81,8 @@ namespace tinydb
 
     DBHeaderPage *header = reinterpret_cast<DBHeaderPage *>(header_page->get_data());
     page_id_t new_page_id = header->get_page_count();
-    header->set_page_count(new_page_id + 1);     // Update high watermark
-    m_buffer_pool_manager_->unpin_page(0, true); // Mark as dirty
+    header->set_page_count(new_page_id + 1);                 // Update high watermark
+    m_buffer_pool_manager_->unpin_page(kHeaderPageId, true); // Mark as dirty
 
     // Mark the page as allocated in our bitmap
     if (!set_bit(new_page_id, true))
@@ -97,7 +96,7 @@ namespace tinydb
   bool FreeSpaceManager::deallocate_page(page_id_t page_id)
   {
     // Cannot deallocate system pages
-    if (page_id == 0 || page_id == 1)
+    if (page_id == kHeaderPageId || page_id == kFreeSpaceMapPageId)
     {
       return false;
     }
@@ -169,7 +168,7 @@ namespace tinydb
     // Use the high watermark from the header page to know how many pages have been allocated
 
     // Get the current page count (high watermark) from the header page
-    Page *header_page = m_buffer_pool_manager_->fetch_page(0);
+    Page *header_page = m_buffer_pool_manager_->fetch_page(kHeaderPageId);
     if (header_page == nullptr)
     {
       return INVALID_PAGE_ID;
@@ -177,7 +176,7 @@ namespace tinydb
 
     DBHeaderPage *header = reinterpret_cast<DBHeaderPage *>(header_page->get_data());
     uint32_t page_count = header->get_page_count();
-    m_buffer_pool_manager_->unpin_page(0, false);
+    m_buffer_pool_manager_->unpin_page(kHeaderPageId, false);
 
     Page *fs_page = m_buffer_pool_manager_->fetch_page(kFreeSpaceMapPageId);
     if (fs_page == nullptr)
@@ -188,7 +187,7 @@ namespace tinydb
     uint8_t *bitmap = reinterpret_cast<uint8_t *>(fs_page->get_data());
 
     // Only scan up to the high watermark (pages that have been allocated before)
-    for (page_id_t page_id = 2; page_id < page_count; ++page_id) // Start from page 2 (skip header and free space map)
+    for (page_id_t page_id = kFirstDataPageId; page_id < page_count; ++page_id) // Skip header and FSM
     {
       size_t byte_index = page_id / kBitsPerByte;
       size_t bit_index = page_id % kBitsPerByte;

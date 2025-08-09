@@ -26,13 +26,13 @@ namespace tinydb
 
   bool Catalog::bootstrap_database()
   {
-    // Try to fetch Page 0 (DBHeaderPage)
-    Page *header_page_raw = m_buffer_pool_manager_->fetch_page(0);
+    // Try to fetch Header Page
+    Page *header_page_raw = m_buffer_pool_manager_->fetch_page(kHeaderPageId);
 
     if (header_page_raw == nullptr)
     {
-      // Page 0 doesn't exist - this is a new database
-      // Write Page 0 directly to disk first
+      // Header doesn't exist - this is a new database
+      // Write Header directly to disk first
       char header_data[kPageSize];
       std::memset(header_data, 0, kPageSize);
 
@@ -45,16 +45,16 @@ namespace tinydb
       {
         return false;
       }
-      disk_manager->write_page(0, header_data);
+      disk_manager->write_page(kHeaderPageId, header_data);
 
       // Now fetch it through buffer pool
-      header_page_raw = m_buffer_pool_manager_->fetch_page(0);
+      header_page_raw = m_buffer_pool_manager_->fetch_page(kHeaderPageId);
       if (header_page_raw == nullptr)
       {
         return false;
       }
 
-      m_buffer_pool_manager_->unpin_page(0, false);
+      m_buffer_pool_manager_->unpin_page(kHeaderPageId, false);
 
       // Create meta-tables for new database
       return create_meta_tables();
@@ -65,12 +65,12 @@ namespace tinydb
 
     if (!header->is_valid())
     {
-      m_buffer_pool_manager_->unpin_page(0, false);
+      m_buffer_pool_manager_->unpin_page(kHeaderPageId, false);
       return false;
     }
 
     page_id_t catalog_tables_page_id = header->get_catalog_tables_page_id();
-    m_buffer_pool_manager_->unpin_page(0, false);
+    m_buffer_pool_manager_->unpin_page(kHeaderPageId, false);
 
     if (catalog_tables_page_id == INVALID_PAGE_ID)
     {
@@ -130,8 +130,8 @@ namespace tinydb
 
     m_catalog_columns_heap_ = std::make_unique<TableHeap>(m_buffer_pool_manager_, columns_page_id, m_free_space_manager_.get());
 
-    // Step 3: Update DBHeaderPage with catalog tables root page ID
-    Page *header_page = m_buffer_pool_manager_->fetch_page(0);
+    // Step 3: Update Header with catalog tables root page ID
+    Page *header_page = m_buffer_pool_manager_->fetch_page(kHeaderPageId);
     if (header_page == nullptr)
     {
       return false;
@@ -139,7 +139,7 @@ namespace tinydb
 
     DBHeaderPage *header = reinterpret_cast<DBHeaderPage *>(header_page->get_data());
     header->set_catalog_tables_page_id(tables_page_id);
-    m_buffer_pool_manager_->unpin_page(0, true);
+    m_buffer_pool_manager_->unpin_page(kHeaderPageId, true);
 
     // Step 4: Insert meta-table records into __catalog_tables so they describe themselves
     if (!persist_table_metadata(kCatalogTablesTableId, "__catalog_tables", tables_page_id) ||
@@ -161,7 +161,7 @@ namespace tinydb
   bool Catalog::load_existing_catalog()
   {
     // Get catalog tables page ID from header
-    Page *header_page = m_buffer_pool_manager_->fetch_page(0);
+    Page *header_page = m_buffer_pool_manager_->fetch_page(kHeaderPageId);
     if (header_page == nullptr)
     {
       return false;
@@ -169,7 +169,7 @@ namespace tinydb
 
     DBHeaderPage *header = reinterpret_cast<DBHeaderPage *>(header_page->get_data());
     page_id_t tables_page_id = header->get_catalog_tables_page_id();
-    m_buffer_pool_manager_->unpin_page(0, false);
+    m_buffer_pool_manager_->unpin_page(kHeaderPageId, false);
 
     // Create schemas for meta-tables
     m_catalog_tables_schema_ = std::make_unique<Schema>(create_catalog_tables_schema());

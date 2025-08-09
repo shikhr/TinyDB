@@ -37,13 +37,13 @@ namespace tinydb
     void flush_all_pages();
     bool delete_page(page_id_t page_id);
 
-    // Access to disk manager for coordination
+    // Access to disk manager for coordination (non-owning)
     DiskManager *get_disk_manager() { return m_disk_manager_; }
 
   private:
     size_t m_pool_size_;                                     // Total number of frames in the buffer pool
-    DiskManager *m_disk_manager_;                            // Pointer to the disk manager for reading/writing pages
-    Page *m_pages_;                                          // Array of pages in the buffer pool
+    DiskManager *m_disk_manager_;                            // Non-owning: DiskManager is owned by higher layer
+    Page *m_pages_;                                          // Raw array of pages (TODO: migrate to std::vector<Page>)
     std::vector<frame_id_t> m_free_list_;                    // List of free frames in the buffer pool
     std::unordered_map<page_id_t, frame_id_t> m_page_table_; // Maps page IDs to frame IDs
     std::unique_ptr<LRUReplacer> m_replacer_;                // LRU replacer for managing page eviction

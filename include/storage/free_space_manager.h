@@ -33,7 +33,6 @@ namespace tinydb
     bool is_page_allocated(page_id_t page_id);
 
   private:
-    static constexpr page_id_t kFreeSpaceMapPageId = 1;
     static constexpr size_t kBitsPerByte = 8;
     static constexpr size_t kMaxPages = kPageSize * kBitsPerByte; // 32768 pages max
 
