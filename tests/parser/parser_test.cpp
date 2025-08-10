@@ -232,6 +232,92 @@ namespace tinydb
     }
   }
 
+  TEST_CASE("Parser - UPDATE statement", "[parser]")
+  {
+    SECTION("Basic UPDATE with WHERE")
+    {
+      std::string sql = "UPDATE users SET name = 'Bob' WHERE id = 1";
+      Lexer lexer(sql);
+      auto tokens = lexer.tokenize();
+      REQUIRE_FALSE(lexer.had_error());
+
+      Parser parser(std::move(tokens));
+      auto result = parser.parse();
+
+      REQUIRE(result.success);
+      REQUIRE(result.statement->get_type() == Statement::Type::UPDATE);
+
+      auto update_stmt = static_cast<UpdateStatement *>(result.statement.get());
+      REQUIRE(update_stmt->table_name == "users");
+      REQUIRE(update_stmt->set_clauses.size() == 1);
+      REQUIRE(update_stmt->set_clauses[0].first == "name");
+      auto lit = dynamic_cast<LiteralExpression *>(update_stmt->set_clauses[0].second.get());
+      REQUIRE(lit != nullptr);
+      REQUIRE(update_stmt->where_clause != nullptr);
+      auto where_bin = dynamic_cast<BinaryOpExpression *>(update_stmt->where_clause.get());
+      REQUIRE(where_bin != nullptr);
+      REQUIRE(where_bin->op == BinaryOpExpression::Operator::EQUAL);
+    }
+
+    SECTION("UPDATE multiple SET clauses")
+    {
+      std::string sql = "UPDATE users SET name = 'Jane', id = 3 WHERE name = 'Alice'";
+      Lexer lexer(sql);
+      auto tokens = lexer.tokenize();
+      REQUIRE_FALSE(lexer.had_error());
+
+      Parser parser(std::move(tokens));
+      auto result = parser.parse();
+
+      REQUIRE(result.success);
+      auto update_stmt = static_cast<UpdateStatement *>(result.statement.get());
+      REQUIRE(update_stmt->set_clauses.size() == 2);
+    }
+
+    SECTION("UPDATE without WHERE")
+    {
+      std::string sql = "UPDATE users SET name = 'Zed'";
+      Lexer lexer(sql);
+      auto tokens = lexer.tokenize();
+      REQUIRE_FALSE(lexer.had_error());
+
+      Parser parser(std::move(tokens));
+      auto result = parser.parse();
+
+      REQUIRE(result.success);
+      auto update_stmt = static_cast<UpdateStatement *>(result.statement.get());
+      REQUIRE(update_stmt->where_clause == nullptr);
+    }
+
+    SECTION("UPDATE missing SET should fail")
+    {
+      std::string sql = "UPDATE users name = 'Bob'"; // Missing SET keyword
+      Lexer lexer(sql);
+      auto tokens = lexer.tokenize();
+      REQUIRE_FALSE(lexer.had_error());
+
+      Parser parser(std::move(tokens));
+      auto result = parser.parse();
+
+      REQUIRE_FALSE(result.success);
+      REQUIRE(result.error_message.find("Expected 'SET'") != std::string::npos);
+    }
+
+    SECTION("UPDATE invalid SET clause should fail")
+    {
+      std::string sql = "UPDATE users SET = 1"; // Missing column name
+      Lexer lexer(sql);
+      auto tokens = lexer.tokenize();
+      REQUIRE_FALSE(lexer.had_error());
+
+      Parser parser(std::move(tokens));
+      auto result = parser.parse();
+
+      REQUIRE_FALSE(result.success);
+      REQUIRE(result.error_message.find("Expected column name in SET clause") != std::string::npos);
+    }
+  }
+
   TEST_CASE("Parser - Expression parsing", "[parser]")
   {
     SECTION("Literal expressions")

@@ -70,6 +70,7 @@ namespace tinydb
     ExecutionResult execute_insert(const InsertStatement &stmt);
     ExecutionResult execute_select(const SelectStatement &stmt);
     ExecutionResult execute_delete(const DeleteStatement &stmt);
+    ExecutionResult execute_update(const UpdateStatement &stmt);
 
     // Expression evaluation methods
     std::optional<Value> evaluate_expression(const Expression &expr,

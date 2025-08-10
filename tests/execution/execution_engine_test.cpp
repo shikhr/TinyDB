@@ -272,6 +272,72 @@ namespace tinydb
     }
   }
 
+  TEST_CASE_METHOD(ExecutionEngineTestFixture, "ExecutionEngine - Update Records", "[execution_engine]")
+  {
+    // Setup: Create table and insert data
+    REQUIRE(execute_sql("CREATE TABLE users (id INTEGER, name VARCHAR)").success);
+    REQUIRE(execute_sql("INSERT INTO users (id, name) VALUES (1, 'Alice'), (2, 'Bob'), (3, 'Charlie')").success);
+
+    SECTION("Update single record with WHERE")
+    {
+      auto update_result = execute_sql("UPDATE users SET name = 'Bobby' WHERE id = 2");
+      REQUIRE(update_result.success);
+      REQUIRE(update_result.rows_affected == 1);
+
+      auto select_result = execute_sql("SELECT * FROM users WHERE id = 2");
+      REQUIRE(select_result.success);
+      REQUIRE(select_result.rows_affected == 1);
+      REQUIRE(select_result.result_rows[0][1].get_string() == "Bobby");
+    }
+
+    SECTION("Update multiple records")
+    {
+      auto update_result = execute_sql("UPDATE users SET name = 'Anon' WHERE id > 1");
+      REQUIRE(update_result.success);
+      REQUIRE(update_result.rows_affected == 2);
+
+      auto select_result = execute_sql("SELECT * FROM users WHERE id > 1");
+      REQUIRE(select_result.success);
+      REQUIRE(select_result.rows_affected == 2);
+      REQUIRE(select_result.result_rows[0][1].get_string() == "Anon");
+      REQUIRE(select_result.result_rows[1][1].get_string() == "Anon");
+    }
+
+    SECTION("Update without WHERE updates all")
+    {
+      auto update_result = execute_sql("UPDATE users SET name = 'X'");
+      REQUIRE(update_result.success);
+      REQUIRE(update_result.rows_affected == 3);
+
+      auto select_result = execute_sql("SELECT * FROM users");
+      REQUIRE(select_result.success);
+      REQUIRE(select_result.rows_affected == 3);
+      for (const auto &row : select_result.result_rows)
+      {
+        REQUIRE(row[1].get_string() == "X");
+      }
+    }
+
+    SECTION("Update multiple SET clauses")
+    {
+      auto update_result = execute_sql("UPDATE users SET name = 'Z', id = 10 WHERE id = 1");
+      REQUIRE(update_result.success);
+      REQUIRE(update_result.rows_affected == 1);
+
+      auto select_result = execute_sql("SELECT * FROM users WHERE name = 'Z'");
+      REQUIRE(select_result.success);
+      REQUIRE(select_result.rows_affected == 1);
+      REQUIRE(select_result.result_rows[0][0].get_integer() == 10);
+    }
+
+    SECTION("Update on non-existent table")
+    {
+      auto result = execute_sql("UPDATE nope SET x = 1");
+      REQUIRE_FALSE(result.success);
+      REQUIRE(result.error_message.find("Table does not exist") != std::string::npos);
+    }
+  }
+
   TEST_CASE_METHOD(ExecutionEngineTestFixture, "ExecutionEngine - Complex WHERE Clauses", "[execution_engine]")
   {
     // Setup: Create table and insert data

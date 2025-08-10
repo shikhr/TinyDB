@@ -183,8 +183,7 @@ namespace tinydb
       }
       else if (keyword == "UPDATE")
       {
-        set_error("UPDATE statement is not yet implemented");
-        return nullptr;
+        return parse_update();
       }
       else
       {
@@ -398,6 +397,66 @@ namespace tinydb
         return nullptr;
     }
 
+    return stmt;
+  }
+
+  std::unique_ptr<UpdateStatement> Parser::parse_update()
+  {
+    auto stmt = std::make_unique<UpdateStatement>();
+
+    // Consume UPDATE keyword
+    if (!consume(TokenType::KEYWORD, "Expected 'UPDATE'"))
+      return nullptr;
+
+    // Get table name
+    if (current_token().type != TokenType::IDENTIFIER)
+    {
+      set_error("Expected table name");
+      return nullptr;
+    }
+    stmt->table_name = current_token().value;
+    advance();
+
+    if (!consume(TokenType::KEYWORD, "Expected 'SET'"))
+      return nullptr;
+
+    // Parse SET clauses
+    do
+    {
+      if (current_token().type != TokenType::IDENTIFIER)
+      {
+        set_error("Expected column name in SET clause");
+        return nullptr;
+      }
+      std::string column_name = current_token().value;
+      advance();
+
+      if (!consume(TokenType::OPERATOR, "=", "Expected '=' in SET clause"))
+        return nullptr;
+
+      auto value_expr = parse_expression();
+      if (!value_expr)
+        return nullptr;
+
+      stmt->set_clauses.emplace_back(column_name, std::move(value_expr));
+
+      if (match(TokenType::PUNCTUATION, ","))
+      {
+        continue; // More SET clauses
+      }
+      else
+      {
+        break; // End of SET clauses
+      }
+    } while (!is_at_end());
+
+    // Optional WHERE clause
+    if (match(TokenType::KEYWORD, "WHERE"))
+    {
+      stmt->where_clause = parse_expression();
+      if (!stmt->where_clause)
+        return nullptr;
+    }
     return stmt;
   }
 

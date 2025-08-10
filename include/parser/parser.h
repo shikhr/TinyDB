@@ -111,6 +111,15 @@ namespace tinydb
     Type get_type() const override { return Type::DELETE; }
   };
 
+  struct UpdateStatement : public Statement
+  {
+    std::string table_name;
+    std::vector<std::pair<std::string, std::unique_ptr<Expression>>> set_clauses; // column = value pairs
+    std::unique_ptr<Expression> where_clause;                                     // WHERE condition (optional)
+
+    Type get_type() const override { return Type::UPDATE; }
+  };
+
   /**
    * Literal expression (string, number, boolean, null)
    */
@@ -243,6 +252,7 @@ namespace tinydb
     std::unique_ptr<InsertStatement> parse_insert();
     std::unique_ptr<SelectStatement> parse_select();
     std::unique_ptr<DeleteStatement> parse_delete();
+    std::unique_ptr<UpdateStatement> parse_update();
 
     // Expression parsing (recursive descent with precedence)
     std::unique_ptr<Expression> parse_expression();

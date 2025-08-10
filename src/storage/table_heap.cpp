@@ -93,15 +93,34 @@ namespace tinydb
 
   bool TableHeap::update_record(const Record &record, const RecordID &rid)
   {
+    // First attempt in-place update on the same page
     Page *page = m_buffer_pool_manager_->fetch_page(rid.page_id_);
     if (page == nullptr)
     {
       return false;
     }
     TablePage *table_page = reinterpret_cast<TablePage *>(page);
-    bool result = table_page->update_record(record, rid);
-    m_buffer_pool_manager_->unpin_page(rid.page_id_, result); // Mark dirty if update was successful
-    return result;
+    bool in_place = table_page->update_record(record, rid);
+    m_buffer_pool_manager_->unpin_page(rid.page_id_, in_place);
+    if (in_place)
+    {
+      return true;
+    }
+
+    // Fallback: delete the old record and insert the new one via heap logic
+    if (!delete_record(rid))
+    {
+      return false;
+    }
+
+    RecordID new_rid;
+    if (!insert_record(record, &new_rid))
+    {
+      // Insert failed after delete; report failure (record remains deleted)
+      return false;
+    }
+
+    return true;
   }
 
   bool TableHeap::get_record(const RecordID &rid, Record *record)

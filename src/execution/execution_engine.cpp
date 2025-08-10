@@ -32,6 +32,8 @@ namespace tinydb
         return execute_select(static_cast<const SelectStatement &>(statement));
       case Statement::Type::DELETE:
         return execute_delete(static_cast<const DeleteStatement &>(statement));
+      case Statement::Type::UPDATE:
+        return execute_update(static_cast<const UpdateStatement &>(statement));
       default:
         return make_error_result("Unsupported statement type");
       }
@@ -316,6 +318,94 @@ namespace tinydb
     }
 
     return make_success_result(rows_deleted);
+  }
+
+  ExecutionResult ExecutionEngine::execute_update(const UpdateStatement &stmt)
+  {
+    TableHeap *table = m_catalog_->get_table(stmt.table_name);
+    if (!table)
+    {
+      return make_error_result("Table does not exist: " + stmt.table_name);
+    }
+    const Schema *schema = m_catalog_->get_schema(stmt.table_name);
+    if (!schema)
+    {
+      return make_error_result("Schema not found for table: " + stmt.table_name);
+    }
+
+    size_t rows_updated = 0;
+    std::vector<RecordID> records_to_update;
+    // Sequential scan to find records to update
+    for (auto it = table->begin(); it != table->end(); ++it)
+    {
+      const Record &record = *it;
+
+      // Deserialize record to values
+      std::vector<Value> record_values = deserialize_record_to_values(record, *schema);
+
+      // Evaluate WHERE clause if present
+      bool update_record = true;
+      if (stmt.where_clause)
+      {
+        auto where_result = evaluate_expression(*stmt.where_clause, *schema, record_values);
+        if (!where_result || where_result->is_null())
+        {
+          update_record = false;
+        }
+        else if (where_result->get_type() != ColumnType::INTEGER || where_result->get_integer() == 0)
+        {
+          update_record = false;
+        }
+      }
+
+      if (update_record)
+      {
+        records_to_update.push_back(record.get_rid());
+      }
+    }
+    // Update the records by deleting and reinserting the updated values
+
+    for (const auto &rid : records_to_update)
+    {
+      // Deserialize the existing record
+      Record existing_record;
+      if (!table->get_record(rid, &existing_record))
+      {
+        continue; // Skip if record not found
+      }
+
+      std::vector<Value> record_values = deserialize_record_to_values(existing_record, *schema);
+
+      // Apply updates
+      for (const auto &set_clause : stmt.set_clauses)
+      {
+        auto col_index = schema->get_column_index(set_clause.first);
+        if (!col_index)
+        {
+          return make_error_result("Column not found: " + set_clause.first);
+        }
+
+        auto value = evaluate_expression(*set_clause.second, *schema, record_values);
+        if (!value || value->is_null())
+        {
+          return make_error_result("Invalid value for column: " + set_clause.first);
+        }
+
+        record_values[*col_index] = *value;
+      }
+
+      // Serialize the updated record
+      auto updated_data = schema->serialize_record(record_values);
+      Record updated_record(rid, updated_data.size(), updated_data.data());
+
+      // Update the record in the table
+      if (table->update_record(updated_record, rid))
+      {
+        rows_updated++;
+      }
+    }
+
+    return make_success_result(rows_updated);
   }
 
   std::optional<Value> ExecutionEngine::evaluate_expression(const Expression &expr,

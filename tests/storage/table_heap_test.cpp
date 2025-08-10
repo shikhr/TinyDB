@@ -439,3 +439,61 @@ TEST_CASE("TableHeap Stress Tests", "[table_heap]")
     std::filesystem::remove(db_file);
   }
 }
+
+TEST_CASE("TableHeap - Update basic scenarios", "[table_heap]")
+{
+  std::string db_file = std::filesystem::temp_directory_path() / "table_heap_update_basic.db";
+  if (std::filesystem::exists(db_file))
+    std::filesystem::remove(db_file);
+
+  auto disk_manager = std::make_unique<DiskManager>(db_file);
+  auto buffer_pool_manager = std::make_unique<BufferPoolManager>(10, disk_manager.get());
+  auto free_space_manager = std::make_unique<FreeSpaceManager>(buffer_pool_manager.get());
+  REQUIRE(free_space_manager->initialize());
+
+  page_id_t first_page_id = free_space_manager->allocate_page();
+  REQUIRE(first_page_id != INVALID_PAGE_ID);
+  Page *first_page = buffer_pool_manager->new_page(first_page_id);
+  REQUIRE(first_page != nullptr);
+  auto *table_page = reinterpret_cast<TablePage *>(first_page);
+  table_page->init(first_page_id, INVALID_PAGE_ID);
+  buffer_pool_manager->unpin_page(first_page_id, true);
+
+  TableHeap heap(buffer_pool_manager.get(), first_page_id, free_space_manager.get());
+
+  // Schema: id INTEGER, name VARCHAR(100)
+  std::vector<Column> columns = {Column("id", ColumnType::INTEGER), Column("name", ColumnType::VARCHAR, 100)};
+  Schema schema(std::move(columns));
+
+  // Insert one row
+  std::vector<Value> values = {Value(1), Value(std::string("Alice"))};
+  auto data = schema.serialize_record(values);
+  Record rec(RecordID(), data.size(), data.data());
+  RecordID rid;
+  REQUIRE(heap.insert_record(rec, &rid));
+
+  // Same-size update: change name to 5-char string
+  std::vector<Value> updated_same = {Value(1), Value(std::string("Zelda"))};
+  auto data_same = schema.serialize_record(updated_same);
+  Record rec_same(rid, data_same.size(), data_same.data());
+  REQUIRE(heap.update_record(rec_same, rid));
+
+  // Verify
+  Record got;
+  REQUIRE(heap.get_record(rid, &got));
+  auto vals = schema.deserialize_record(got.get_data(), got.get_size());
+  REQUIRE(vals[1].get_string() == "Zelda");
+
+  // Larger update: make name longer
+  std::vector<Value> updated_large = {Value(1), Value(std::string("A_very_long_name_here"))};
+  auto data_large = schema.serialize_record(updated_large);
+  Record rec_large(rid, data_large.size(), data_large.data());
+  REQUIRE(heap.update_record(rec_large, rid));
+
+  REQUIRE(heap.get_record(rid, &got));
+  vals = schema.deserialize_record(got.get_data(), got.get_size());
+  REQUIRE(vals[1].get_string() == "A_very_long_name_here");
+
+  // Cleanup
+  std::filesystem::remove(db_file);
+}

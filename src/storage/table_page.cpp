@@ -77,18 +77,32 @@ namespace tinydb
       return false; // Record is deleted
     }
 
-    // Check if the new record fits in the old space.
-    if (record.get_size() > static_cast<int>(slot->size_))
+    if (record.get_size() <= static_cast<int>(slot->size_))
     {
-      // For now, we don't support in-place updates that require more space.
+      // Fits in existing space: overwrite and shrink if needed
+      std::memcpy(get_data() + slot->offset_, record.get_data(), record.get_size());
+      slot->size_ = record.get_size();
+      return true;
+    }
+
+    // Need to grow: check if we have enough free space to place a new copy
+    offset_t needed_extra = record.get_size() - slot->size_;
+    if (get_free_space_remaining() < needed_extra)
+    {
+      // Not enough space on this page to grow
       return false;
     }
 
-    // Copy the new data into the existing location.
-    memcpy(get_data() + slot->offset_, record.get_data(), record.get_size());
+    // Allocate new space from the free space pointer and copy the full record
+    offset_t new_free_space_pointer = get_free_space_pointer() - record.get_size();
+    std::memcpy(get_data() + new_free_space_pointer, record.get_data(), record.get_size());
 
-    // Update the size in the slot if it's smaller.
+    // Update slot to point to the new location and size
+    slot->offset_ = new_free_space_pointer;
     slot->size_ = record.get_size();
+
+    // Commit new free space pointer; old bytes become fragmented space
+    set_free_space_pointer(new_free_space_pointer);
 
     return true;
   }
